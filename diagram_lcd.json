@@ -1,341 +1,330 @@
-#include <Wire.h>
-#include <LiquidCrystal_I2C.h>
-
-#define BUTTON_UP_PIN     14
-#define BUTTON_DOWN_PIN   12
-#define BUTTON_ENTER_PIN  26
-#define BUTTON_BACK_PIN   25
-#define BUTTON_LEFT_PIN   13
-#define BUTTON_RIGHT_PIN  27
-
-#define DEBOUNCE_DELAY    50  // Задержка для антидребезга
-
-LiquidCrystal_I2C lcd(0x27, 16, 2);
-
-volatile bool upPressed = false;
-volatile bool downPressed = false;
-volatile bool enterPressed = false;
-volatile bool backPressed = false;
-
-unsigned long timer_lastUpPress = 0;
-unsigned long timer_lastDownPress = 0;
-unsigned long timer_lastEnterPress = 0;
-unsigned long timer_lastBackPress = 0;
-unsigned long timer_lastLeftPress = 0;  // Таймер для кнопки Left
-unsigned long timer_lastRightPress = 0; // Таймер для кнопки Right
-
-unsigned long timer_menuAFK = 0;
-
-// Для отслеживания состояний кнопок
-bool upState;
-bool downState;
-bool enterState;
-bool backState;
-bool leftState;   // Состояние кнопки Left
-bool rightState;  // Состояние кнопки Right
-
-// Для фиксации предыдущих состояний кнопок
-bool lastUpState = LOW;
-bool lastDownState = LOW;
-bool lastEnterState = LOW;
-bool lastBackState = LOW;
-bool lastLeftState = LOW;   // Предыдущее состояние Left
-bool lastRightState = LOW;  // Предыдущее состояние Right
-
-enum MenuState { GREETING, MAIN_MENU, SUB_MENU };
-MenuState currentMenu = GREETING;
-
-int menuIndex = 0;          // Текущий индекс меню
-int currentSubMenu = -1;    // Индекс текущего подменю
-int charIndex = 0;          // Индекс текущего символа в строке
-
-// Массив символов для выбора, включая пробел
-char symbols[] = " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-int numSymbols = sizeof(symbols) - 1;
-
-String setting2 = "ABC"; // Настройка типа String, максимум 16 символов
-
-// Переменные для других пунктов меню
-int setting1 = 0;           // Настройка типа int
-int setting3 = 10;          // Ещё одна настройка типа int
-
-void setup() {
-  Serial.begin(115200);
-
-  lcd.init();
-  lcd.backlight();
-  
-  pinMode(BUTTON_UP_PIN, INPUT);
-  pinMode(BUTTON_DOWN_PIN, INPUT);
-  pinMode(BUTTON_ENTER_PIN, INPUT);
-  pinMode(BUTTON_BACK_PIN, INPUT);
-  pinMode(BUTTON_LEFT_PIN, INPUT);  // Настройка пинов Left и Right
-  pinMode(BUTTON_RIGHT_PIN, INPUT);
-
-  showGreeting();
-}
-
-void loop() {
-  handleButtonPress();
-}
-
-void CheckAFK() {
-  if (currentMenu != GREETING) {
-    if (millis() - timer_menuAFK >= 10000) {
-      currentMenu = GREETING;
-      showGreeting();
-      timer_menuAFK = millis();
-    }
-  } else timer_menuAFK = millis();
-}
-
-void handleButtonPress() {
-  unsigned long currentMillis = millis();
-  CheckAFK();
-
-  if (currentMillis - timer_menuAFK >= 10000 && currentMenu != GREETING) {
-    currentMenu = GREETING;
-    showGreeting();
-    timer_menuAFK = millis();
-  }
-
-  // Чтение текущих состояний кнопок
-  upState = digitalRead(BUTTON_UP_PIN);
-  downState = digitalRead(BUTTON_DOWN_PIN);
-  enterState = digitalRead(BUTTON_ENTER_PIN);
-  backState = digitalRead(BUTTON_BACK_PIN);
-  leftState = digitalRead(BUTTON_LEFT_PIN);   // Добавлено чтение для кнопки Left
-  rightState = digitalRead(BUTTON_RIGHT_PIN); // Добавлено чтение для кнопки Right
-
-  // Обработка кнопки "Up"
-  if (upState == LOW && lastUpState == HIGH && (currentMillis - timer_lastUpPress > DEBOUNCE_DELAY)) {
-    timer_lastUpPress = currentMillis;
-    handleUpPress();
-  }
-  if (upState == HIGH && lastUpState == LOW) {
-    timer_lastUpPress = currentMillis;
-  }
-  lastUpState = upState;
-
-  // Обработка кнопки "Down"
-  if (downState == LOW && lastDownState == HIGH && (currentMillis - timer_lastDownPress > DEBOUNCE_DELAY)) {
-    timer_lastDownPress = currentMillis;
-    handleDownPress();
-  }
-  if (downState == HIGH && lastDownState == LOW) {
-    timer_lastDownPress = currentMillis;
-  }
-  lastDownState = downState;
-
-  // Обработка кнопки "Enter"
-  if (enterState == LOW && lastEnterState == HIGH && (currentMillis - timer_lastEnterPress > DEBOUNCE_DELAY)) {
-    timer_lastEnterPress = currentMillis;
-    handleEnterPress();
-  }
-  if (enterState == HIGH && lastEnterState == LOW) {
-    timer_lastEnterPress = currentMillis;
-  }
-  lastEnterState = enterState;
-
-  // Обработка кнопки "Back"
-  if (backState == LOW && lastBackState == HIGH && (currentMillis - timer_lastBackPress > DEBOUNCE_DELAY)) {
-    timer_lastBackPress = currentMillis;
-    handleBackPress();
-  }
-  if (backState == HIGH && lastBackState == LOW) {
-    timer_lastBackPress = currentMillis;
-  }
-  lastBackState = backState;
-
-  // Обработка кнопки "Left"
-  if (leftState == LOW && lastLeftState == HIGH && (currentMillis - timer_lastLeftPress > DEBOUNCE_DELAY)) {
-    timer_lastLeftPress = currentMillis;
-    handleLeftPress();
-  }
-  if (leftState == HIGH && lastLeftState == LOW) {
-    timer_lastLeftPress = currentMillis;
-  }
-  lastLeftState = leftState;
-
-  // Обработка кнопки "Right"
-  if (rightState == LOW && lastRightState == HIGH && (currentMillis - timer_lastRightPress > DEBOUNCE_DELAY)) {
-    timer_lastRightPress = currentMillis;
-    handleRightPress();
-  }
-  if (rightState == HIGH && lastRightState == LOW) {
-    timer_lastRightPress = currentMillis;
-  }
-  lastRightState = rightState;
-}
-
-void showGreeting() {
-  Serial.println(setting2);
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Welcome!");
-  lcd.setCursor(0, 1);
-  lcd.print("Press Enter...");
-}
-
-void showMainMenu() {
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Menu:");
-  lcd.setCursor(0, 1);
-  switch (menuIndex) {
-    case 0: lcd.print("Setting 1 (int)"); break;
-    case 1: lcd.print("Setting 2 (string)"); break;
-    case 2: lcd.print("Setting 3 (int)"); break;
-  }
-}
-
-void showSubMenu() {
-  lcd.clear();
-  lcd.setCursor(0, 0);
-
-  // Показ названия параметра в зависимости от выбранного пункта
-  switch (currentSubMenu) {
-    case 0:
-      lcd.print("Setting 1");
-      break;
-    case 1:
-      lcd.print("Setting 2");
-      break;
-    case 2:
-      lcd.print("Setting 3");
-      break;
-  }
-  
-  lcd.setCursor(0, 1);
-  
-  // Отображаем значение настройки в зависимости от выбранного пункта меню
-  switch (currentSubMenu) {
-    case 0:
-      lcd.print(setting1);  // Отображаем int для setting1
-      break;
-    case 1:
-      lcd.print(setting2);  // Отображаем String для setting2
-      lcd.setCursor(charIndex, 1); // Устанавливаем курсор на текущий символ
-      break;
-    case 2:
-      lcd.print(setting3);  // Отображаем int для setting3
-      break;
-  }
-}
-
-void handleUpPress() {
-  timer_menuAFK = millis();
-  if (currentMenu == MAIN_MENU) {
-    menuIndex = (menuIndex - 1 + 3) % 3; // Меню из 3 пунктов
-    showMainMenu();
-  } else if (currentMenu == SUB_MENU) {
-    if (currentSubMenu == 1) {  // Если изменяем строку setting2
-      // Изменяем текущий символ на следующий в массиве symbols
-      char currentChar = setting2[charIndex];
-      int symbolIndex = findSymbolIndex(currentChar);
-      symbolIndex = (symbolIndex + 1) % numSymbols;
-      setting2[charIndex] = symbols[symbolIndex];
-      showSubMenu();
-    } else if (currentSubMenu == 0) {
-      setting1++;  // Увеличиваем значение для setting1 (int)
-      showSubMenu();
-    } else if (currentSubMenu == 2) {
-      setting3++;  // Увеличиваем значение для setting3 (int)
-      showSubMenu();
-    }
-  }
-}
-
-void handleDownPress() {
-  timer_menuAFK = millis();
-  if (currentMenu == MAIN_MENU) {
-    menuIndex = (menuIndex + 1) % 3; // Меню из 3 пунктов
-    showMainMenu();
-  } else if (currentMenu == SUB_MENU) {
-    if (currentSubMenu == 1) {  // Если изменяем строку setting2
-      // Изменяем текущий символ на предыдущий в массиве symbols
-      char currentChar = setting2[charIndex];
-      int symbolIndex = findSymbolIndex(currentChar);
-      symbolIndex = (symbolIndex - 1 + numSymbols) % numSymbols;
-      setting2[charIndex] = symbols[symbolIndex];
-      showSubMenu();
-    } else if (currentSubMenu == 0) {
-      setting1--;  // Уменьшаем значение для setting1 (int)
-      showSubMenu();
-    } else if (currentSubMenu == 2) {
-      setting3--;  // Уменьшаем значение для setting3 (int)
-      showSubMenu();
-    }
-  }
-}
-
-void handleLeftPress() {
-  if (currentSubMenu == 1 && charIndex > 0) {
-    charIndex--;  // Перемещаемся влево по строке setting2
-    showSubMenu();
-  }
-}
-
-void handleRightPress() {
-  if (currentSubMenu == 1) {
-    // Если мы находимся на последнем символе строки и строка меньше 16 символов, добавляем новый символ (пробел)
-    if (charIndex == setting2.length() - 1 && setting2.length() < 16) {
-      setting2 += " ";  // Добавляем пробел в конец строки
-    }
-    if (charIndex < setting2.length() - 1) {
-      charIndex++;  // Перемещаемся вправо по строке setting2
-    }
-    showSubMenu();
-  }
-}
-
-void handleEnterPress() {
-  timer_menuAFK = millis();
-  if (currentMenu == GREETING) {
-    currentMenu = MAIN_MENU;
-    showMainMenu();
-  } else if (currentMenu == MAIN_MENU) {
-    currentMenu = SUB_MENU;
-    currentSubMenu = menuIndex;  // Сохраняем, какое подменю выбрано
-    showSubMenu();
-  } else if (currentMenu == SUB_MENU) {
-    // Применение значения
-    removeTrailingSpaces();  // Удаляем пробелы в конце строки
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("Value saved!");
-    delay(1000);
-    currentMenu = MAIN_MENU;
-    showMainMenu();
-  }
-}
-
-void handleBackPress() {
-  timer_menuAFK = millis();
-  if (currentMenu == SUB_MENU) {
-    currentMenu = MAIN_MENU;
-    showMainMenu();
-  } else if (currentMenu == MAIN_MENU) {
-    currentMenu = GREETING;
-    showGreeting();
-  }
-}
-
-// Функция для поиска индекса символа в массиве
-int findSymbolIndex(char currentChar) {
-  for (int i = 0; i < numSymbols; i++) {
-    if (symbols[i] == currentChar) {
-      return i;
-    }
-  }
-  return 0;  // Если символ не найден
-}
-
-// Функция для удаления пробелов в конце строки
-void removeTrailingSpaces() {
-  int lastNonSpace = setting2.length() - 1;
-  while (lastNonSpace >= 0 && setting2[lastNonSpace] == ' ') {
-    lastNonSpace--;
-  }
-  setting2 = setting2.substring(0, lastNonSpace + 1);
+{
+  "version": 1,
+  "author": "Sergey Polevoy",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-esp32-devkit-c-v4",
+      "id": "esp",
+      "top": -29.94,
+      "left": -41.5,
+      "rotate": 270,
+      "attrs": {}
+    },
+    { "type": "wokwi-gnd", "id": "gnd1", "top": -334.6, "left": -0.2, "rotate": 180, "attrs": {} },
+    {
+      "type": "wokwi-lcd1602",
+      "id": "lcd1",
+      "top": -320,
+      "left": 24.8,
+      "attrs": { "pins": "i2c" }
+    },
+    { "type": "wokwi-gnd", "id": "gnd3", "top": -66.3, "left": 546.1, "rotate": 270, "attrs": {} },
+    { "type": "wokwi-vcc", "id": "vcc3", "top": -316.04, "left": -28.8, "attrs": {} },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn3",
+      "top": -143.9,
+      "left": 150.3,
+      "rotate": 270,
+      "attrs": { "color": "yellow", "bounce": "1" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn4",
+      "top": -38.3,
+      "left": 150.3,
+      "rotate": 270,
+      "attrs": { "color": "yellow", "bounce": "1" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn5",
+      "top": -143.9,
+      "left": 323.1,
+      "rotate": 270,
+      "attrs": { "color": "green", "bounce": "1" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r6",
+      "top": 42.65,
+      "left": 440.2,
+      "rotate": 180,
+      "attrs": { "value": "1000" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r7",
+      "top": 4.8,
+      "left": 441.05,
+      "rotate": 180,
+      "attrs": { "value": "1000" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r8",
+      "top": 23.45,
+      "left": 440.2,
+      "rotate": 180,
+      "attrs": { "value": "1000" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn6",
+      "top": -143.9,
+      "left": 371.1,
+      "rotate": 270,
+      "attrs": { "color": "red", "bounce": "1" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r9",
+      "top": -14.95,
+      "left": 440.2,
+      "rotate": 180,
+      "attrs": { "value": "1000" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r1",
+      "top": -34.15,
+      "left": 440.2,
+      "rotate": 180,
+      "attrs": { "value": "1000" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r2",
+      "top": -53.35,
+      "left": 440.2,
+      "rotate": 180,
+      "attrs": { "value": "1000" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn1",
+      "top": -86.3,
+      "left": 92.7,
+      "rotate": 270,
+      "attrs": { "color": "yellow", "bounce": "1" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn2",
+      "top": -76.7,
+      "left": 207.9,
+      "rotate": 270,
+      "attrs": { "color": "yellow", "bounce": "1" }
+    },
+    {
+      "type": "wokwi-vcc",
+      "id": "vcc1",
+      "top": -187.2,
+      "left": 63.36,
+      "rotate": 270,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led1",
+      "top": -358.8,
+      "left": -264.6,
+      "attrs": { "color": "white", "flip": "1" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r3",
+      "top": -264,
+      "left": -278.95,
+      "rotate": 90,
+      "attrs": { "value": "300" }
+    },
+    {
+      "type": "wokwi-relay-module",
+      "id": "relay1",
+      "top": -169.8,
+      "left": -322.8,
+      "rotate": 270,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led2",
+      "top": -358.8,
+      "left": -197.4,
+      "attrs": { "color": "yellow", "flip": "1" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r4",
+      "top": -264,
+      "left": -211.75,
+      "rotate": 90,
+      "attrs": { "value": "300" }
+    },
+    {
+      "type": "wokwi-relay-module",
+      "id": "relay2",
+      "top": -169.8,
+      "left": -255.6,
+      "rotate": 270,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led3",
+      "top": -358.8,
+      "left": -130.2,
+      "attrs": { "color": "red", "flip": "1" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r5",
+      "top": -264,
+      "left": -144.55,
+      "rotate": 90,
+      "attrs": { "value": "300" }
+    },
+    {
+      "type": "wokwi-relay-module",
+      "id": "relay3",
+      "top": -169.8,
+      "left": -188.4,
+      "rotate": 270,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn7",
+      "top": 57.5,
+      "left": -236.5,
+      "rotate": 270,
+      "attrs": { "color": "white", "bounce": "1" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn8",
+      "top": 57.5,
+      "left": -178.9,
+      "rotate": 270,
+      "attrs": { "color": "white" }
+    },
+    {
+      "type": "wokwi-pir-motion-sensor",
+      "id": "pir1",
+      "top": 259.2,
+      "left": -74.02,
+      "rotate": 180,
+      "attrs": { "delayTime": "1" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r10",
+      "top": 167.45,
+      "left": -318.2,
+      "rotate": 180,
+      "attrs": { "value": "1000" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r11",
+      "top": 148.25,
+      "left": -318.2,
+      "rotate": 180,
+      "attrs": { "value": "1000" }
+    },
+    { "type": "wokwi-gnd", "id": "gnd2", "top": 134.9, "left": -354.9, "rotate": 90, "attrs": {} },
+    {
+      "type": "wokwi-vcc",
+      "id": "vcc2",
+      "top": -81.6,
+      "left": -330.24,
+      "rotate": 270,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-vcc",
+      "id": "vcc4",
+      "top": -235.2,
+      "left": -330.24,
+      "rotate": 270,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-gnd",
+      "id": "gnd4",
+      "top": -353.8,
+      "left": -86.6,
+      "rotate": 180,
+      "attrs": {}
+    },
+    { "type": "wokwi-gnd", "id": "gnd5", "top": 278.4, "left": -96.6, "attrs": {} },
+    { "type": "wokwi-vcc", "id": "vcc6", "top": 277.44, "left": 29, "rotate": 180, "attrs": {} },
+    { "type": "wokwi-vcc", "id": "vcc5", "top": 4.8, "left": -253.44, "rotate": 270, "attrs": {} }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+    [ "gnd1:GND", "lcd1:GND", "black", [ "v0" ] ],
+    [ "lcd1:SDA", "esp:21", "green", [ "h-48", "v297.8" ] ],
+    [ "lcd1:SCL", "esp:22", "orange", [ "h-19.2", "v0.3", "h-57.6" ] ],
+    [ "vcc3:VCC", "lcd1:VCC", "red", [ "v0" ] ],
+    [ "gnd3:GND", "r2:1", "black", [ "v0", "h-38.4" ] ],
+    [ "gnd3:GND", "r1:1", "black", [ "v0" ] ],
+    [ "gnd3:GND", "r9:1", "black", [ "v0" ] ],
+    [ "gnd3:GND", "r7:1", "black", [ "v0" ] ],
+    [ "gnd3:GND", "r8:1", "black", [ "v0" ] ],
+    [ "gnd3:GND", "r6:1", "black", [ "v0" ] ],
+    [ "btn6:2.l", "r2:2", "purple", [ "v0" ] ],
+    [ "btn5:2.l", "r1:2", "white", [ "v0" ] ],
+    [ "btn2:2.l", "r9:2", "blue", [ "v0" ] ],
+    [ "btn3:2.l", "r7:2", "gold", [ "v19.2", "h19.4", "v67.2", "h0", "v9.6" ] ],
+    [ "btn4:2.l", "r8:2", "green", [ "v0" ] ],
+    [ "btn1:2.l", "r6:2", "orange", [ "v0" ] ],
+    [ "btn1:2.l", "esp:13", "orange", [ "v163.2", "h-67" ] ],
+    [ "btn4:2.l", "esp:12", "green", [ "v124.8", "h-143.8" ] ],
+    [ "btn3:2.l", "esp:14", "gold", [ "v19.2", "h19.4", "v220.8", "h-172.8" ] ],
+    [ "btn2:2.l", "esp:27", "blue", [ "v182.4", "h-211" ] ],
+    [ "btn5:2.l", "esp:26", "white", [ "v259.2", "h-345.4" ] ],
+    [ "btn6:2.l", "esp:25", "purple", [ "v268.8", "h-143.8" ] ],
+    [ "vcc1:VCC", "btn6:1.r", "red", [ "h307.2", "v19.4" ] ],
+    [ "vcc1:VCC", "btn5:1.r", "red", [ "v0", "h259.2" ] ],
+    [ "vcc1:VCC", "btn3:1.r", "red", [ "v0", "h86.4" ] ],
+    [ "vcc1:VCC", "btn1:1.r", "red", [ "v0", "h19.2" ] ],
+    [ "vcc1:VCC", "btn4:1.r", "red", [ "v0", "h67.2", "v105.6", "h19.2" ] ],
+    [ "vcc1:VCC", "btn2:1.r", "red", [ "v0", "h134.4" ] ],
+    [ "relay2:GND", "relay1:GND", "black", [ "v19.2", "h-67.2" ] ],
+    [ "relay3:GND", "relay2:GND", "black", [ "v19.2", "h-67.2" ] ],
+    [ "relay2:VCC", "relay1:VCC", "red", [ "v9.6", "h-67.2" ] ],
+    [ "relay3:VCC", "relay2:VCC", "red", [ "v9.6", "h-67.2" ] ],
+    [ "r3:1", "led1:A", "white", [ "h0" ] ],
+    [ "r4:1", "led2:A", "yellow", [ "h0" ] ],
+    [ "r5:1", "led3:A", "red", [ "h0" ] ],
+    [ "r5:2", "relay3:NO", "red", [ "h0" ] ],
+    [ "r4:2", "relay2:NO", "yellow", [ "h0" ] ],
+    [ "r3:2", "relay1:NO", "white", [ "h0" ] ],
+    [ "btn7:1.l", "r11:1", "blue", [ "v0" ] ],
+    [ "btn8:1.l", "r10:1", "green", [ "v57.8", "h-102.8" ] ],
+    [ "gnd2:GND", "r11:2", "black", [ "v0" ] ],
+    [ "vcc2:VCC", "relay1:VCC", "red", [ "v0", "h19.2" ] ],
+    [ "vcc4:VCC", "relay1:COM", "red", [ "v0", "h48" ] ],
+    [ "vcc4:VCC", "relay2:COM", "red", [ "v0", "h105.6" ] ],
+    [ "vcc4:VCC", "relay3:COM", "red", [ "v0", "h172.8" ] ],
+    [ "gnd4:GND", "led3:C", "black", [ "v9.6", "h-19.2" ] ],
+    [ "gnd4:GND", "led2:C", "black", [ "v9.6", "h-86.4" ] ],
+    [ "gnd4:GND", "led1:C", "black", [ "v9.6", "h-153.6" ] ],
+    [ "pir1:GND", "gnd5:GND", "black", [ "v-9.6", "h-38.14" ] ],
+    [ "vcc6:VCC", "pir1:VCC", "red", [ "v-28.8", "h-57.6" ] ],
+    [ "gnd2:GND", "r10:2", "black", [ "v19.2" ] ],
+    [ "vcc5:VCC", "btn7:2.r", "red", [ "v0", "h28.8" ] ],
+    [ "vcc5:VCC", "btn8:2.r", "red", [ "v0", "h86.4" ] ],
+    [ "relay1:IN", "esp:19", "white", [ "v67.2", "h28.6" ] ],
+    [ "relay2:IN", "esp:18", "gold", [ "v57.6", "h38.2" ] ],
+    [ "relay3:IN", "esp:5", "red", [ "v48", "h134.2", "v57.6" ] ],
+    [ "r11:1", "esp:32", "blue", [ "v0", "h240" ] ],
+    [ "r10:1", "esp:33", "green", [ "v0", "h249.6" ] ],
+    [ "pir1:OUT", "esp:34", "orange", [ "v0" ] ]
+  ],
+  "dependencies": {}
 }
